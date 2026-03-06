@@ -1,7 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-Генератор коммерческих предложений — V2.
-Форма → выбор шаблона КП → генерация → просмотр/редактирование → скачать PDF.
+Генератор коммерческих предложений (V2).
+
+Как устроен файл:
+  1. Константы и настройки (лимиты, кэш шрифта)
+  2. Вспомогательные функции (шрифт, очистка текста, отрисовка PDF)
+  3. Маршруты: главная страница, генерация КП, скачивание PDF
 """
 
 import io
@@ -16,134 +20,199 @@ from proposal import generate_proposal, TEMPLATES
 
 app = Flask(__name__)
 
-# Лимиты для проверки крайних случаев
-MAX_FIELD_LEN = 500
-MAX_PROPOSAL_LEN = 100_000
+# --- Константы (удобно менять в одном месте) ---
+MAX_FIELD_LEN = 500          # макс. длина каждого поля формы (символов)
+MAX_PROPOSAL_LEN = 100_000   # макс. длина текста КП при скачивании PDF
 
-# Кэш зарегистрированного шрифта, чтобы не регистрировать повторно (крайний случай: повторный вызов)
-_pdf_font_registered = None
+# Кэш имени шрифта: регистрируем один раз, дальше только возвращаем имя
+_cached_font_name = None
 
-# Подключение шрифта для кириллицы: пробуем Arial (Windows), иначе DejaVu в папке проекта
+
 def _get_pdf_font():
-    global _pdf_font_registered
-    if _pdf_font_registered is not None:
-        return _pdf_font_registered
-    arial_path = os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts", "arial.ttf")
+    """
+    Возвращает имя шрифта для PDF. Кириллица поддерживается через Arial (Windows)
+    или DejaVu (файл в папке проекта). Если ничего нет — Helvetica (только латиница).
+    """
+    global _cached_font_name
+    if _cached_font_name is not None:
+        return _cached_font_name
+
+    # Сначала пробуем Arial — он есть в Windows
+    windows_dir = os.environ.get("WINDIR", "C:\\Windows")
+    arial_path = os.path.join(windows_dir, "Fonts", "arial.ttf")
     if os.path.isfile(arial_path):
         pdfmetrics.registerFont(TTFont("PdfFont", arial_path))
-        _pdf_font_registered = "PdfFont"
-        return _pdf_font_registered
-    dejavu = os.path.join(os.path.dirname(__file__), "DejaVuSans.ttf")
-    if os.path.isfile(dejavu):
-        pdfmetrics.registerFont(TTFont("PdfFont", dejavu))
-        _pdf_font_registered = "PdfFont"
-        return _pdf_font_registered
-    _pdf_font_registered = "Helvetica"
-    return _pdf_font_registered
+        _cached_font_name = "PdfFont"
+        return _cached_font_name
+
+    # Иначе — шрифт DejaVu в папке с приложением
+    project_dir = os.path.dirname(__file__)
+    dejavu_path = os.path.join(project_dir, "DejaVuSans.ttf")
+    if os.path.isfile(dejavu_path):
+        pdfmetrics.registerFont(TTFont("PdfFont", dejavu_path))
+        _cached_font_name = "PdfFont"
+        return _cached_font_name
+
+    # Запасной вариант: только латиница
+    _cached_font_name = "Helvetica"
+    return _cached_font_name
 
 
-def _sanitize_text_for_pdf(text: str) -> str:
-    """Удаляет управляющие символы (кроме \\n, \\r, \\t), чтобы PDF не падал (крайний случай)."""
-    return "".join(c for c in text if c in "\n\r\t" or ord(c) >= 32)
+def _sanitize_text_for_pdf(text):
+    """
+    Убирает из текста управляющие символы (кроме переноса строки и табуляции).
+    Иначе библиотека PDF может выдать ошибку при отрисовке.
+    """
+    result = []
+    for char in text:
+        if char in "\n\r\t":
+            result.append(char)
+        elif ord(char) >= 32:
+            result.append(char)
+    return "".join(result)
 
 
 def _iter_draw_chunks(text, max_chunk=80):
-    """Разбивает текст на строки и длинные строки — на куски по max_chunk символов (для вывода в PDF)."""
-    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    """
+    Разбивает текст на части для построчной отрисовки в PDF.
+    Длинные строки режет на куски по max_chunk символов.
+    yield None — значит «пустая строка» (отступ между абзацами).
+    """
+    # Приводим все переносы к \n
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    lines = normalized.split("\n")
+
     for line in lines:
+        # Режем длинную строку на куски
         start = 0
         while start < len(line):
-            yield line[start : start + max_chunk]
+            chunk = line[start : start + max_chunk]
+            yield chunk
             start += max_chunk
-        yield None  # пустая строка после линии (отступ)
+        # После каждой строки — отступ (пустая строка)
+        yield None
 
-def _draw_text_on_canvas(c, text, font_name, page):
+
+def _draw_text_on_canvas(pdf_canvas, text, font_name, page_layout):
     """
-    Рисует текст на canvas. page — dict: width, height, margin, line_height, max_chunk.
+    Пишет текст на странице PDF. При нехватке места — создаёт новую страницу.
+    page_layout — словарь с ключами: width, height, margin, line_height, max_chunk.
     """
-    m = page["margin"]
-    lh = page["line_height"]
-    x, y = m, page["height"] - m
-    for chunk in _iter_draw_chunks(text, page["max_chunk"]):
-        if y < m:
-            c.showPage()
-            c.setFont(font_name, 12)
-            y = page["height"] - m
+    margin = page_layout["margin"]
+    line_height = page_layout["line_height"]
+    page_height = page_layout["height"]
+
+    x = margin
+    y = page_height - margin
+
+    for chunk in _iter_draw_chunks(text, page_layout["max_chunk"]):
+        # Нужна новая страница?
+        if y < margin:
+            pdf_canvas.showPage()
+            pdf_canvas.setFont(font_name, 12)
+            y = page_height - margin
+
         if chunk is None:
             y -= 4
             continue
-        c.drawString(x, y, chunk)
-        y -= lh
 
+        pdf_canvas.drawString(x, y, chunk)
+        y -= line_height
+
+
+def _render_form_page(proposal_text=None, error=None):
+    """Общие параметры для страницы с формой (при загрузке и при ошибке)."""
+    return render_template(
+        "index.html",
+        proposal_text=proposal_text,
+        edit_mode=(proposal_text is not None),
+        templates=TEMPLATES,
+        error=error,
+    )
+
+
+# --- Маршруты (что делает каждая страница) ---
 
 @app.route("/")
 def index():
-    """Главная: форма для ввода данных о клиенте и выбора шаблона КП."""
-    return render_template("index.html", proposal_text=None, edit_mode=False, templates=TEMPLATES, error=None)
+    """Главная страница: показываем форму для ввода данных клиента и выбора шаблона."""
+    return _render_form_page(proposal_text=None, error=None)
 
 
 @app.route("/generate", methods=["POST"])
 def generate():
-    """Принимает данные формы и template_id, генерирует текст КП, показывает для просмотра/редактирования."""
-    # Крайний случай 1: пустые или только пробелы в обязательных полях
+    """Получаем данные формы, проверяем их, генерируем текст КП и показываем его для редактирования."""
+    # Собираем данные из полей формы (убираем пробелы по краям)
     client = {
         "name": request.form.get("name", "").strip(),
         "company": request.form.get("company", "").strip(),
         "contact": request.form.get("contact", "").strip(),
         "subject": request.form.get("subject", "").strip(),
     }
-    empty = [k for k, v in client.items() if not v]
-    if empty:
-        names = {"name": "Контактное лицо", "company": "Компания", "contact": "Контакт", "subject": "Тема предложения"}
-        msg = "Заполните все поля: " + ", ".join(names[k] for k in empty)
-        return render_template("index.html", proposal_text=None, edit_mode=False, templates=TEMPLATES, error=msg), 400
 
-    # Крайний случай 2: слишком длинные значения полей
-    for key, value in client.items():
+    # Проверка: все обязательные поля заполнены
+    empty_fields = [key for key, value in client.items() if not value]
+    if empty_fields:
+        field_labels = {
+            "name": "Контактное лицо",
+            "company": "Компания",
+            "contact": "Контакт",
+            "subject": "Тема предложения",
+        }
+        labels_list = [field_labels[key] for key in empty_fields]
+        error_message = "Заполните все поля: " + ", ".join(labels_list)
+        return _render_form_page(error=error_message), 400
+
+    # Проверка: ни одно поле не слишком длинное
+    for field_name, value in client.items():
         if len(value) > MAX_FIELD_LEN:
-            return render_template(
-                "index.html", proposal_text=None, edit_mode=False, templates=TEMPLATES,
-                error=f"Поле «{key}» слишком длинное (макс. {MAX_FIELD_LEN} символов)."
-            ), 400
+            error_message = f"Поле «{field_name}» слишком длинное (макс. {MAX_FIELD_LEN} символов)."
+            return _render_form_page(error=error_message), 400
 
-    # Крайний случай 3: неверный template_id
+    # Проверка: выбран существующий шаблон
     template_id = request.form.get("template_id", "classic")
     if template_id not in TEMPLATES:
-        return render_template(
-            "index.html", proposal_text=None, edit_mode=False, templates=TEMPLATES,
-            error="Выбран неверный шаблон КП. Выберите шаблон из списка."
-        ), 400
+        return _render_form_page(error="Выбран неверный шаблон КП. Выберите шаблон из списка."), 400
 
+    # Генерируем текст КП и показываем страницу с формой и блоком редактирования
     proposal_text = generate_proposal(client, template_id=template_id)
-    return render_template("index.html", proposal_text=proposal_text, edit_mode=True, templates=TEMPLATES, error=None)
+    return _render_form_page(proposal_text=proposal_text, error=None)
 
 
 @app.route("/download", methods=["POST"])
 def download_pdf():
-    """
-    Получает итоговый текст КП из формы (после возможного редактирования)
-    и отдаёт PDF файлом.
-    """
+    """Берём текст КП из формы, проверяем его и отдаём пользователю файл PDF."""
     text = request.form.get("proposal_text", "")
-    # Крайний случай 4: пустой или только пробелы текст при скачивании
+
     if not text.strip():
         return "Текст предложения пуст. Сгенерируйте КП и при необходимости отредактируйте его.", 400
-    # Крайний случай 5: слишком длинный текст (защита от переполнения памяти/PDF)
+
     if len(text) > MAX_PROPOSAL_LEN:
-        return f"Текст КП слишком длинный (макс. {MAX_PROPOSAL_LEN} символов). Сократите или разбейте на части.", 400
-    # Крайний случай 5б: управляющие символы в тексте могут ломать PDF — оставляем только печатные и \\n\\r\\t
+        return (
+            f"Текст КП слишком длинный (макс. {MAX_PROPOSAL_LEN} символов). Сократите или разбейте на части.",
+            400,
+        )
+
     text = _sanitize_text_for_pdf(text)
 
-    # Формируем PDF в памяти (без сохранения файла на диск)
+    # Создаём PDF в памяти (файл на диск не сохраняем)
     buffer = io.BytesIO()
     font_name = _get_pdf_font()
-    c = canvas.Canvas(buffer, pagesize=A4)
-    c.setFont(font_name, 12)
+    pdf_canvas = canvas.Canvas(buffer, pagesize=A4)
+    pdf_canvas.setFont(font_name, 12)
+
     width, height = A4
-    page = {"width": width, "height": height, "margin": 50, "line_height": 16, "max_chunk": 80}
-    _draw_text_on_canvas(c, text, font_name, page)
-    c.save()
+    page_layout = {
+        "width": width,
+        "height": height,
+        "margin": 50,
+        "line_height": 16,
+        "max_chunk": 80,
+    }
+    _draw_text_on_canvas(pdf_canvas, text, font_name, page_layout)
+    pdf_canvas.save()
     buffer.seek(0)
+
     return send_file(
         buffer,
         mimetype="application/pdf",

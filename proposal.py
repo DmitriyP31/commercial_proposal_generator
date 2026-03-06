@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-Генерация текста коммерческого предложения по данным клиента.
-Несколько шаблонов с разным тоном; можно добавлять новые.
+Модуль генерации текста коммерческого предложения (КП).
+
+Используется в app.py:
+  - TEMPLATES — список шаблонов для выбора в форме (id и название)
+  - generate_proposal(client, template_id) — возвращает готовый текст КП
 """
 
 from datetime import date
 
-
-# Список шаблонов для выбора в форме (id → название)
+# Шаблоны КП: идентификатор → название для выпадающего списка в форме
 TEMPLATES = {
     "classic": "Классический — деловой тон",
     "partner": "Партнёрский — тёплый, доверительный",
@@ -16,10 +18,13 @@ TEMPLATES = {
 }
 
 
-def generate_proposal(client: dict, template_id: str = "classic") -> str:
+def generate_proposal(client, template_id="classic"):
     """
-    Формирует текст КП по данным клиента и выбранному шаблону.
-    client: name, company, contact, subject.
+    Собирает текст КП из данных клиента и выбранного шаблона.
+
+    client — словарь с ключами: name, company, contact, subject.
+    template_id — один из ключей TEMPLATES (если передан другой — используется "classic").
+    Возвращает строку с текстом КП.
     """
     today = date.today().strftime("%d.%m.%Y")
     name = client.get("name", "")
@@ -27,7 +32,10 @@ def generate_proposal(client: dict, template_id: str = "classic") -> str:
     contact = client.get("contact", "")
     subject = client.get("subject", "")
 
-    template_id = template_id if template_id in TEMPLATES else "classic"
+    # Если передан неизвестный шаблон — берём классический
+    if template_id not in TEMPLATES:
+        template_id = "classic"
+
     if template_id == "classic":
         return _template_classic(today, name, company, contact, subject)
     if template_id == "partner":
@@ -36,11 +44,12 @@ def generate_proposal(client: dict, template_id: str = "classic") -> str:
         return _template_benefit(today, name, company, contact, subject)
     if template_id == "short":
         return _template_short(today, name, company, contact, subject)
+
     return _template_classic(today, name, company, contact, subject)
 
 
 def _template_classic(today, name, company, contact, subject):
-    """Деловой, нейтральный тон."""
+    """Шаблон: деловой, нейтральный тон."""
     return f"""КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ
 от {today}
 
@@ -60,7 +69,7 @@ def _template_classic(today, name, company, contact, subject):
 
 
 def _template_partner(today, name, company, contact, subject):
-    """Тёплый, партнёрский тон."""
+    """Шаблон: тёплый, партнёрский тон."""
     return f"""КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ
 от {today}
 
@@ -79,7 +88,7 @@ def _template_partner(today, name, company, contact, subject):
 
 
 def _template_benefit(today, name, company, contact, subject):
-    """Акцент на выгоде и результате."""
+    """Шаблон: акцент на выгоде и результате."""
     return f"""КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ
 от {today}
 
@@ -98,7 +107,7 @@ def _template_benefit(today, name, company, contact, subject):
 
 
 def _template_short(today, name, company, contact, subject):
-    """Кратко и по делу."""
+    """Шаблон: кратко и по делу."""
     return f"""КП от {today}
 
 {name}, {company}
