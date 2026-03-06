@@ -5,46 +5,162 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Генератор КП</title>
     <style>
-        body { font-family: sans-serif; max-width: 700px; margin: 2rem auto; padding: 0 1rem; }
-        h1 { font-size: 1.3rem; }
-        label { display: block; margin-top: 0.8rem; font-weight: 500; }
-        input, textarea { width: 100%; padding: 0.4rem; box-sizing: border-box; }
-        textarea { min-height: 280px; font-family: inherit; }
-        button { margin-top: 1rem; padding: 0.5rem 1rem; cursor: pointer; }
-        .block { margin-bottom: 1.5rem; }
+        :root {
+            --bg: #f0f4f8;
+            --card: #ffffff;
+            --text: #1a2332;
+            --text-muted: #5c6b7a;
+            --accent: #2563eb;
+            --accent-hover: #1d4ed8;
+            --border: #e2e8f0;
+            --radius: 12px;
+            --shadow: 0 1px 3px rgba(0,0,0,.06);
+            --shadow-lg: 0 10px 40px -10px rgba(0,0,0,.12);
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+            min-height: 100vh;
+            padding: 2rem 1rem;
+            line-height: 1.5;
+        }
+        .wrap {
+            max-width: 560px;
+            margin: 0 auto;
+        }
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin: 0 0 1.5rem;
+            color: var(--text);
+        }
+        .card {
+            background: var(--card);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 1.5rem 1.5rem 1.75rem;
+            margin-bottom: 1.25rem;
+        }
+        .card-title {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 1rem;
+        }
+        label {
+            display: block;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--text);
+            margin-top: 1rem;
+        }
+        label:first-of-type { margin-top: 0; }
+        input, select, textarea {
+            width: 100%;
+            padding: 0.65rem 0.85rem;
+            margin-top: 0.35rem;
+            font-family: inherit;
+            font-size: 1rem;
+            color: var(--text);
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            transition: border-color .15s, box-shadow .15s;
+        }
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, .15);
+        }
+        input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: .8; }
+        select { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%235c6b7a' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right .75rem center; padding-right: 2rem; }
+        textarea {
+            min-height: 280px;
+            resize: vertical;
+        }
+        .btn {
+            display: inline-block;
+            margin-top: 1.25rem;
+            padding: 0.7rem 1.4rem;
+            font-family: inherit;
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #fff;
+            background: var(--accent);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background .15s, transform .05s;
+        }
+        .btn:hover { background: var(--accent-hover); }
+        .btn:active { transform: scale(0.98); }
+        .btn-secondary {
+            background: var(--text-muted);
+            color: #fff;
+        }
+        .btn-secondary:hover { background: #4a5568; }
+        .proposal-block .card-title { margin-bottom: 0.5rem; }
+        .proposal-block .hint { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem; }
+        .error-message {
+            background: #fef2f2;
+            color: #b91c1c;
+            padding: 0.85rem 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+            border: 1px solid #fecaca;
+        }
     </style>
 </head>
 <body>
-    <h1>Генератор коммерческих предложений</h1>
+    <div class="wrap">
+        <h1>Генератор коммерческих предложений</h1>
 
-    <!-- Форма ввода данных о клиенте (показывается всегда; после генерации — сверху) -->
-    <div class="block">
-        <form action="/generate" method="post">
-            <label for="name">Контактное лицо (ФИО)</label>
-            <input type="text" id="name" name="name" placeholder="Иван Иванов" required>
+        {% if error %}
+        <div class="error-message" role="alert">{{ error }}</div>
+        {% endif %}
 
-            <label for="company">Компания</label>
-            <input type="text" id="company" name="company" placeholder="ООО «Пример»" required>
+        <div class="card">
+            <div class="card-title">Данные клиента</div>
+            <form action="/generate" method="post">
+                <label for="template_id">Шаблон КП</label>
+                <select id="template_id" name="template_id" required>
+                    {% for id, title in templates.items() %}
+                    <option value="{{ id }}">{{ title }}</option>
+                    {% endfor %}
+                </select>
 
-            <label for="contact">Контакт (email или телефон)</label>
-            <input type="text" id="contact" name="contact" placeholder="ivan@example.com" required>
+                <label for="name">Контактное лицо (ФИО)</label>
+                <input type="text" id="name" name="name" placeholder="Иван Иванов" required>
 
-            <label for="subject">Тема предложения</label>
-            <input type="text" id="subject" name="subject" placeholder="Поставка оборудования" required>
+                <label for="company">Компания</label>
+                <input type="text" id="company" name="company" placeholder="ООО «Пример»" required>
 
-            <button type="submit">Сгенерировать КП</button>
-        </form>
+                <label for="contact">Контакт (email или телефон)</label>
+                <input type="text" id="contact" name="contact" placeholder="ivan@example.com" required>
+
+                <label for="subject">Тема предложения</label>
+                <input type="text" id="subject" name="subject" placeholder="Поставка оборудования" required>
+
+                <button type="submit" class="btn">Сгенерировать КП</button>
+            </form>
+        </div>
+
+        {% if proposal_text is not none %}
+        <div class="card proposal-block">
+            <div class="card-title">Текст КП</div>
+            <p class="hint">При необходимости отредактируйте текст ниже и скачайте PDF.</p>
+            <form action="/download" method="post">
+                <textarea name="proposal_text" id="proposal_text">{{ proposal_text }}</textarea>
+                <button type="submit" class="btn btn-secondary">Скачать PDF</button>
+            </form>
+        </div>
+        {% endif %}
     </div>
-
-    <!-- Блок просмотра и редактирования текста КП + кнопка скачать PDF -->
-    {% if proposal_text is not none %}
-    <div class="block">
-        <label>Текст КП (можно отредактировать)</label>
-        <form action="/download" method="post">
-            <textarea name="proposal_text" id="proposal_text">{{ proposal_text }}</textarea>
-            <button type="submit">Скачать PDF</button>
-        </form>
-    </div>
-    {% endif %}
 </body>
 </html>

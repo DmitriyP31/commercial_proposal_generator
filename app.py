@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Генератор коммерческих предложений — минимальная версия (V1).
-Маршруты: форма ввода → генерация КП → просмотр/редактирование → скачать PDF.
+Генератор коммерческих предложений — V2.
+Форма → выбор шаблона КП → генерация → просмотр/редактирование → скачать PDF.
 """
 
 import io
@@ -12,21 +12,39 @@ from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
-from proposal import generate_proposal
+from proposal import generate_proposal, TEMPLATES
 
 app = Flask(__name__)
 
+# Лимиты для проверки крайних случаев
+MAX_FIELD_LEN = 500
+MAX_PROPOSAL_LEN = 100_000
+
+# Кэш зарегистрированного шрифта, чтобы не регистрировать повторно (крайний случай: повторный вызов)
+_pdf_font_registered = None
+
 # Подключение шрифта для кириллицы: пробуем Arial (Windows), иначе DejaVu в папке проекта
 def _get_pdf_font():
+    global _pdf_font_registered
+    if _pdf_font_registered is not None:
+        return _pdf_font_registered
     arial_path = os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts", "arial.ttf")
     if os.path.isfile(arial_path):
         pdfmetrics.registerFont(TTFont("PdfFont", arial_path))
-        return "PdfFont"
+        _pdf_font_registered = "PdfFont"
+        return _pdf_font_registered
     dejavu = os.path.join(os.path.dirname(__file__), "DejaVuSans.ttf")
     if os.path.isfile(dejavu):
         pdfmetrics.registerFont(TTFont("PdfFont", dejavu))
-        return "PdfFont"
-    return "Helvetica"  # только латиница
+        _pdf_font_registered = "PdfFont"
+        return _pdf_font_registered
+    _pdf_font_registered = "Helvetica"
+    return _pdf_font_registered
+
+
+def _sanitize_text_for_pdf(text: str) -> str:
+    """Удаляет управляющие символы (кроме \\n, \\r, \\t), чтобы PDF не падал (крайний случай)."""
+    return "".join(c for c in text if c in "\n\r\t" or ord(c) >= 32)
 
 
 def _iter_draw_chunks(text, max_chunk=80):
@@ -60,21 +78,44 @@ def _draw_text_on_canvas(c, text, font_name, page):
 
 @app.route("/")
 def index():
-    """Главная: форма для ввода данных о клиенте."""
-    return render_template("index.html", proposal_text=None, edit_mode=False)
+    """Главная: форма для ввода данных о клиенте и выбора шаблона КП."""
+    return render_template("index.html", proposal_text=None, edit_mode=False, templates=TEMPLATES, error=None)
 
 
 @app.route("/generate", methods=["POST"])
 def generate():
-    """Принимает данные формы, генерирует текст КП и показывает его для просмотра/редактирования."""
+    """Принимает данные формы и template_id, генерирует текст КП, показывает для просмотра/редактирования."""
+    # Крайний случай 1: пустые или только пробелы в обязательных полях
     client = {
         "name": request.form.get("name", "").strip(),
         "company": request.form.get("company", "").strip(),
         "contact": request.form.get("contact", "").strip(),
         "subject": request.form.get("subject", "").strip(),
     }
-    proposal_text = generate_proposal(client)
-    return render_template("index.html", proposal_text=proposal_text, edit_mode=True)
+    empty = [k for k, v in client.items() if not v]
+    if empty:
+        names = {"name": "Контактное лицо", "company": "Компания", "contact": "Контакт", "subject": "Тема предложения"}
+        msg = "Заполните все поля: " + ", ".join(names[k] for k in empty)
+        return render_template("index.html", proposal_text=None, edit_mode=False, templates=TEMPLATES, error=msg), 400
+
+    # Крайний случай 2: слишком длинные значения полей
+    for key, value in client.items():
+        if len(value) > MAX_FIELD_LEN:
+            return render_template(
+                "index.html", proposal_text=None, edit_mode=False, templates=TEMPLATES,
+                error=f"Поле «{key}» слишком длинное (макс. {MAX_FIELD_LEN} символов)."
+            ), 400
+
+    # Крайний случай 3: неверный template_id
+    template_id = request.form.get("template_id", "classic")
+    if template_id not in TEMPLATES:
+        return render_template(
+            "index.html", proposal_text=None, edit_mode=False, templates=TEMPLATES,
+            error="Выбран неверный шаблон КП. Выберите шаблон из списка."
+        ), 400
+
+    proposal_text = generate_proposal(client, template_id=template_id)
+    return render_template("index.html", proposal_text=proposal_text, edit_mode=True, templates=TEMPLATES, error=None)
 
 
 @app.route("/download", methods=["POST"])
@@ -84,8 +125,14 @@ def download_pdf():
     и отдаёт PDF файлом.
     """
     text = request.form.get("proposal_text", "")
+    # Крайний случай 4: пустой или только пробелы текст при скачивании
     if not text.strip():
         return "Текст предложения пуст. Сгенерируйте КП и при необходимости отредактируйте его.", 400
+    # Крайний случай 5: слишком длинный текст (защита от переполнения памяти/PDF)
+    if len(text) > MAX_PROPOSAL_LEN:
+        return f"Текст КП слишком длинный (макс. {MAX_PROPOSAL_LEN} символов). Сократите или разбейте на части.", 400
+    # Крайний случай 5б: управляющие символы в тексте могут ломать PDF — оставляем только печатные и \\n\\r\\t
+    text = _sanitize_text_for_pdf(text)
 
     # Формируем PDF в памяти (без сохранения файла на диск)
     buffer = io.BytesIO()
