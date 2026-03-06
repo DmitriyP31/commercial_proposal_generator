@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Генератор КП</title>
+    <style>
+        body { font-family: sans-serif; max-width: 700px; margin: 2rem auto; padding: 0 1rem; }
+        h1 { font-size: 1.3rem; }
+        label { display: block; margin-top: 0.8rem; font-weight: 500; }
+        input, textarea { width: 100%; padding: 0.4rem; box-sizing: border-box; }
+        textarea { min-height: 280px; font-family: inherit; }
+        button { margin-top: 1rem; padding: 0.5rem 1rem; cursor: pointer; }
+        .block { margin-bottom: 1.5rem; }
+    </style>
+</head>
+<body>
+    <h1>Генератор коммерческих предложений</h1>
+
+    <!-- Форма ввода данных о клиенте (показывается всегда; после генерации — сверху) -->
+    <div class="block">
+        <form action="/generate" method="post">
+            <label for="name">Контактное лицо (ФИО)</label>
+            <input type="text" id="name" name="name" placeholder="Иван Иванов" required>
+
+            <label for="company">Компания</label>
+            <input type="text" id="company" name="company" placeholder="ООО «Пример»" required>
+
+            <label for="contact">Контакт (email или телефон)</label>
+            <input type="text" id="contact" name="contact" placeholder="ivan@example.com" required>
+
+            <label for="subject">Тема предложения</label>
+            <input type="text" id="subject" name="subject" placeholder="Поставка оборудования" required>
+
+            <button type="submit">Сгенерировать КП</button>
+        </form>
+    </div>
+
+    <!-- Блок просмотра и редактирования текста КП + кнопка скачать PDF -->
+    {% if proposal_text is not none %}
+    <div class="block">
+        <label>Текст КП (можно отредактировать)</label>
+        <form action="/download" method="post">
+            <textarea name="proposal_text" id="proposal_text">{{ proposal_text }}</textarea>
+            <button type="submit">Скачать PDF</button>
+        </form>
+    </div>
+    {% endif %}
+</body>
+</html>
