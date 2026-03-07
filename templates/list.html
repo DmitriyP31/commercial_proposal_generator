@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Сохранённые КП</title>
+    <style>
+        :root {
+            --bg: #f0f4f8;
+            --card: #ffffff;
+            --text: #1a2332;
+            --text-muted: #5c6b7a;
+            --accent: #2563eb;
+            --accent-hover: #1d4ed8;
+            --radius: 12px;
+            --shadow: 0 1px 3px rgba(0,0,0,.06);
+        }
+        * { box-sizing: border-box; }
+        body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; min-height: 100vh; padding: 2rem 1rem; line-height: 1.5; }
+        .wrap { max-width: 560px; margin: 0 auto; }
+        h1 { font-size: 1.5rem; font-weight: 700; margin: 0 0 1.5rem; }
+        .card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 1rem 1.25rem; margin-bottom: 0.75rem; }
+        .card a { color: var(--accent); text-decoration: none; font-weight: 500; }
+        .card a:hover { text-decoration: underline; }
+        .card .meta { font-size: 0.85rem; color: var(--text-muted); margin-top: 0.25rem; }
+        .nav-header { margin-bottom: 1.5rem; font-size: 0.95rem; }
+        .nav-header a { color: var(--accent); text-decoration: none; font-weight: 500; }
+        .nav-header a:hover { text-decoration: underline; }
+        .nav-header span { color: var(--text-muted); margin: 0 0.5rem; }
+        .empty { color: var(--text-muted); padding: 1.5rem; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <nav class="nav-header" aria-label="Навигация">
+            <a href="{{ url_for('index') }}">Генератор КП</a><span>|</span>
+            <a href="{{ url_for('list_proposals') }}">Сохранённые КП</a>
+        </nav>
+        <h1>Сохранённые КП</h1>
+        {% if proposals %}
+            {% for p in proposals %}
+            <div class="card">
+                <a href="{{ url_for('view_proposal', proposal_id=p.id) }}">{{ p.title }}</a>
+                <div class="meta">Сохранено: {{ p.created_at }}</div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <p class="empty">Пока нет сохранённых. Создайте КП на главной и нажмите «Сохранить в список».</p>
+        {% endif %}
+    </div>
+</body>
+</html>

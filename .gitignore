@@ -22,6 +22,9 @@ htmlcov/
 .env.local
 *.log
 
+# Данные приложения (сохранённые КП)
+saved_proposals.json
+
 # Сборка и прочее
 dist/
 build/
