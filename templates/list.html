@@ -31,6 +31,34 @@
         .nav-header a:hover { text-decoration: underline; }
         .nav-header span { color: var(--text-muted); margin: 0 0.5rem; }
         .empty { color: var(--text-muted); padding: 1.5rem; text-align: center; }
+        .search-form { margin-bottom: 1.25rem; }
+        .search-form form { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+        .search-form input[type="search"] {
+            flex: 1;
+            min-width: 180px;
+            padding: 0.6rem 0.85rem;
+            font-size: 1rem;
+            border: 1px solid var(--border, #e2e8f0);
+            border-radius: 8px;
+            font-family: inherit;
+        }
+        .search-form input[type="search"]:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        .search-form button {
+            padding: 0.6rem 1rem;
+            font-family: inherit;
+            font-size: 0.95rem;
+            font-weight: 500;
+            color: #fff;
+            background: var(--accent);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .search-form button:hover { background: var(--accent-hover); }
+        .search-hint { font-size: 0.85rem; color: var(--text-muted); margin-top: 0.5rem; }
     </style>
 </head>
 <body>
@@ -40,6 +68,15 @@
             <a href="{{ url_for('list_proposals') }}">Сохранённые КП</a>
         </nav>
         <h1>Сохранённые КП</h1>
+        <div class="search-form">
+            <form action="{{ url_for('list_proposals') }}" method="get" role="search">
+                <input type="search" name="q" value="{{ search_query or '' }}" placeholder="Поиск по названию и тексту КП" aria-label="Поиск по сохранённым КП">
+                <button type="submit">Искать</button>
+            </form>
+            {% if search_query %}
+            <p class="search-hint">Найдено: {{ proposals|length }}. <a href="{{ url_for('list_proposals') }}">Показать все</a></p>
+            {% endif %}
+        </div>
         {% if proposals %}
             {% for p in proposals %}
             <div class="card">
@@ -53,7 +90,11 @@
             </div>
             {% endfor %}
         {% else %}
+            {% if search_query %}
+            <p class="empty">По запросу «{{ search_query }}» ничего не найдено. <a href="{{ url_for('list_proposals') }}">Показать все КП</a></p>
+            {% else %}
             <p class="empty">Пока нет сохранённых. Создайте КП на главной и нажмите «Сохранить в список».</p>
+            {% endif %}
         {% endif %}
     </div>
 </body>

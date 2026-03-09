@@ -301,11 +301,22 @@ def proposal_action():
     return _build_pdf_response(text)
 
 
+def _filter_proposals_by_search(proposals, query):
+    """Фильтрует список КП по поисковому запросу (поиск по названию и тексту, без учёта регистра)."""
+    if not (query and query.strip()):
+        return proposals
+    q = query.strip().lower()
+    return [p for p in proposals if q in (p.get("title") or "").lower() or q in (p.get("text") or "").lower()]
+
+
 @app.route("/saved/")
 def list_proposals():
-    """Страница со списком сохранённых КП (новые сверху)."""
+    """Страница со списком сохранённых КП (новые сверху). Поддерживает поиск по названию и тексту (?q=...)."""
     proposals = list(reversed(_load_proposals()))
-    return render_template("list.html", proposals=proposals)
+    search_query = request.args.get("q", "").strip()
+    if search_query:
+        proposals = _filter_proposals_by_search(proposals, search_query)
+    return render_template("list.html", proposals=proposals, search_query=search_query)
 
 
 @app.route("/saved/<proposal_id>")
