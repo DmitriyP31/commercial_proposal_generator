@@ -34,11 +34,14 @@ _cached_font_name = None
 
 
 def _load_proposals():
-    """Читает список сохранённых КП из файла. Если файла нет — возвращает пустой список."""
+    """Читает список сохранённых КП из файла. Если файла нет или он пустой/повреждён — возвращает пустой список."""
     if not os.path.isfile(STORAGE_FILE):
         return []
-    with open(STORAGE_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(STORAGE_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, ValueError):
+        return []
 
 
 def _save_proposals(proposals):
@@ -192,6 +195,41 @@ def _render_form_page(proposal_text=None, error=None):
     )
 
 
+CLIENT_FIELD_LABELS = {
+    "name": "Контактное лицо",
+    "company": "Компания",
+    "contact": "Контакт",
+    "subject": "Тема предложения",
+}
+
+
+def _build_client_from_request(form):
+    """Возвращает словарь данных клиента из полей формы с обрезанными пробелами."""
+    return {
+        "name": form.get("name", "").strip(),
+        "company": form.get("company", "").strip(),
+        "contact": form.get("contact", "").strip(),
+        "subject": form.get("subject", "").strip(),
+    }
+
+
+def _validate_client_required_fields(client):
+    """Проверяет, что все обязательные поля заполнены. Возвращает текст ошибки или None."""
+    empty_fields = [key for key, value in client.items() if not value]
+    if not empty_fields:
+        return None
+    labels_list = [CLIENT_FIELD_LABELS[key] for key in empty_fields]
+    return "Заполните все поля: " + ", ".join(labels_list)
+
+
+def _validate_client_field_lengths(client):
+    """Проверяет, что длина каждого поля не превышает лимит. Возвращает текст ошибки или None."""
+    for field_name, value in client.items():
+        if len(value) > MAX_FIELD_LEN:
+            return f"Поле «{field_name}» слишком длинное (макс. {MAX_FIELD_LEN} символов)."
+    return None
+
+
 # --- Маршруты (что делает каждая страница) ---
 
 @app.route("/")
@@ -203,32 +241,15 @@ def index():
 @app.route("/generate", methods=["POST"])
 def generate():
     """Получаем данные формы, проверяем их, генерируем текст КП и показываем его для редактирования."""
-    # Собираем данные из полей формы (убираем пробелы по краям)
-    client = {
-        "name": request.form.get("name", "").strip(),
-        "company": request.form.get("company", "").strip(),
-        "contact": request.form.get("contact", "").strip(),
-        "subject": request.form.get("subject", "").strip(),
-    }
+    client = _build_client_from_request(request.form)
 
-    # Проверка: все обязательные поля заполнены
-    empty_fields = [key for key, value in client.items() if not value]
-    if empty_fields:
-        field_labels = {
-            "name": "Контактное лицо",
-            "company": "Компания",
-            "contact": "Контакт",
-            "subject": "Тема предложения",
-        }
-        labels_list = [field_labels[key] for key in empty_fields]
-        error_message = "Заполните все поля: " + ", ".join(labels_list)
+    error_message = _validate_client_required_fields(client)
+    if error_message is not None:
         return _render_form_page(error=error_message), 400
 
-    # Проверка: ни одно поле не слишком длинное
-    for field_name, value in client.items():
-        if len(value) > MAX_FIELD_LEN:
-            error_message = f"Поле «{field_name}» слишком длинное (макс. {MAX_FIELD_LEN} символов)."
-            return _render_form_page(error=error_message), 400
+    error_message = _validate_client_field_lengths(client)
+    if error_message is not None:
+        return _render_form_page(error=error_message), 400
 
     # Проверка: выбран существующий шаблон
     template_id = request.form.get("template_id", "classic")
