@@ -77,6 +77,16 @@ def _get_proposal_by_id(proposal_id):
     return None
 
 
+def _delete_proposal(proposal_id):
+    """Удаляет КП по id. Возвращает True, если что‑то удалили, иначе False."""
+    proposals = _load_proposals()
+    new_proposals = [item for item in proposals if item.get("id") != proposal_id]
+    if len(new_proposals) == len(proposals):
+        return False
+    _save_proposals(new_proposals)
+    return True
+
+
 def _get_pdf_font():
     """
     Возвращает имя шрифта для PDF. Кириллица поддерживается через Arial (Windows)
@@ -184,7 +194,7 @@ def _build_pdf_response(text, download_name="commercial_proposal.pdf"):
     return send_file(buffer, mimetype="application/pdf", as_attachment=True, download_name=download_name)
 
 
-def _render_form_page(proposal_text=None, error=None):
+def _render_form_page(proposal_text=None, error=None, suggested_title=None):
     """Общие параметры для страницы с формой (при загрузке и при ошибке)."""
     return render_template(
         "index.html",
@@ -192,6 +202,7 @@ def _render_form_page(proposal_text=None, error=None):
         edit_mode=(proposal_text is not None),
         templates=TEMPLATES,
         error=error,
+        suggested_title=suggested_title,
     )
 
 
@@ -235,7 +246,7 @@ def _validate_client_field_lengths(client):
 @app.route("/")
 def index():
     """Главная страница: показываем форму для ввода данных клиента и выбора шаблона."""
-    return _render_form_page(proposal_text=None, error=None)
+    return _render_form_page(proposal_text=None, error=None, suggested_title=None)
 
 
 @app.route("/generate", methods=["POST"])
@@ -245,20 +256,31 @@ def generate():
 
     error_message = _validate_client_required_fields(client)
     if error_message is not None:
-        return _render_form_page(error=error_message), 400
+        return _render_form_page(error=error_message, suggested_title=None), 400
 
     error_message = _validate_client_field_lengths(client)
     if error_message is not None:
-        return _render_form_page(error=error_message), 400
+        return _render_form_page(error=error_message, suggested_title=None), 400
 
     # Проверка: выбран существующий шаблон
     template_id = request.form.get("template_id", "classic")
     if template_id not in TEMPLATES:
-        return _render_form_page(error="Выбран неверный шаблон КП. Выберите шаблон из списка."), 400
+        return _render_form_page(error="Выбран неверный шаблон КП. Выберите шаблон из списка.", suggested_title=None), 400
 
     # Генерируем текст КП и показываем страницу с формой и блоком редактирования
     proposal_text = generate_proposal(client, template_id=template_id)
-    return _render_form_page(proposal_text=proposal_text, error=None)
+    # Автоматическое название КП: компания + тема (если есть)
+    company = client.get("company") or ""
+    subject = client.get("subject") or ""
+    if company and subject:
+        suggested_title = f"{company} — {subject}"
+    elif company:
+        suggested_title = f"{company} — коммерческое предложение"
+    elif subject:
+        suggested_title = f"Коммерческое предложение — {subject}"
+    else:
+        suggested_title = "Коммерческое предложение"
+    return _render_form_page(proposal_text=proposal_text, error=None, suggested_title=suggested_title)
 
 
 @app.route("/proposal_action", methods=["POST"])
@@ -268,9 +290,9 @@ def proposal_action():
     action = request.form.get("action", "")
 
     if not text.strip():
-        return _render_form_page(proposal_text=text, error="Текст предложения пуст. Сгенерируйте КП и при необходимости отредактируйте его."), 400
+        return _render_form_page(proposal_text=text, error="Текст предложения пуст. Сгенерируйте КП и при необходимости отредактируйте его.", suggested_title=None), 400
     if len(text) > MAX_PROPOSAL_LEN:
-        return _render_form_page(proposal_text=text, error=f"Текст КП слишком длинный (макс. {MAX_PROPOSAL_LEN} символов)."), 400
+        return _render_form_page(proposal_text=text, error=f"Текст КП слишком длинный (макс. {MAX_PROPOSAL_LEN} символов).", suggested_title=None), 400
 
     if action == "save":
         title = request.form.get("save_title", "").strip()
@@ -293,6 +315,15 @@ def view_proposal(proposal_id):
     if item is None:
         abort(404)
     return render_template("view.html", proposal=item)
+
+
+@app.route("/saved/<proposal_id>/delete", methods=["POST"])
+def delete_proposal(proposal_id):
+    """Удаляет сохранённое КП и возвращает пользователя к списку."""
+    deleted = _delete_proposal(proposal_id)
+    if not deleted:
+        abort(404)
+    return redirect(url_for("list_proposals"))
 
 
 @app.route("/saved/<proposal_id>/pdf")

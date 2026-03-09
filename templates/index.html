@@ -169,7 +169,14 @@
             <form action="{{ url_for('proposal_action') }}" method="post">
                 <textarea name="proposal_text" id="proposal_text">{{ proposal_text }}</textarea>
                 <label for="save_title" class="label-optional">Название для списка (необязательно)</label>
-                <input type="text" id="save_title" name="save_title" placeholder="Например: ООО Ромашка — поставка" maxlength="120">
+                <input
+                    type="text"
+                    id="save_title"
+                    name="save_title"
+                    placeholder="Например: ООО Ромашка — поставка"
+                    maxlength="120"
+                    value="{{ suggested_title or '' }}"
+                >
                 <div class="btn-group">
                     <button type="submit" name="action" value="download" class="btn btn-secondary">Скачать PDF</button>
                     <button type="submit" name="action" value="save" class="btn">Сохранить в список</button>

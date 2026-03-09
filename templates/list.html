@@ -23,6 +23,9 @@
         .card a { color: var(--accent); text-decoration: none; font-weight: 500; }
         .card a:hover { text-decoration: underline; }
         .card .meta { font-size: 0.85rem; color: var(--text-muted); margin-top: 0.25rem; }
+        .card-actions { margin-top: 0.5rem; }
+        .delete-button { border: none; background: transparent; color: #b91c1c; font-size: 0.85rem; cursor: pointer; padding: 0; }
+        .delete-button:hover { text-decoration: underline; }
         .nav-header { margin-bottom: 1.5rem; font-size: 0.95rem; }
         .nav-header a { color: var(--accent); text-decoration: none; font-weight: 500; }
         .nav-header a:hover { text-decoration: underline; }
@@ -42,6 +45,11 @@
             <div class="card">
                 <a href="{{ url_for('view_proposal', proposal_id=p.id) }}">{{ p.title }}</a>
                 <div class="meta">Сохранено: {{ p.created_at }}</div>
+                <div class="card-actions">
+                    <form action="{{ url_for('delete_proposal', proposal_id=p.id) }}" method="post">
+                        <button type="submit" class="delete-button">Удалить</button>
+                    </form>
+                </div>
             </div>
             {% endfor %}
         {% else %}
