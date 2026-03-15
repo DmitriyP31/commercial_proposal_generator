@@ -63,6 +63,7 @@ def _add_proposal(text, title=None):
         "title": raw_title,
         "text": text,
         "created_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "archived": False,
     }
     proposals.append(new_item)
     _save_proposals(proposals)
@@ -85,6 +86,17 @@ def _delete_proposal(proposal_id):
         return False
     _save_proposals(new_proposals)
     return True
+
+
+def _set_proposal_archived(proposal_id, archived):
+    """Устанавливает флаг archived у КП по id. Возвращает True, если КП найден, иначе False."""
+    proposals = _load_proposals()
+    for item in proposals:
+        if item.get("id") == proposal_id:
+            item["archived"] = bool(archived)
+            _save_proposals(proposals)
+            return True
+    return False
 
 
 def _get_pdf_font():
@@ -311,24 +323,37 @@ def _filter_proposals_by_search(proposals, query):
 
 @app.route("/saved/")
 def list_proposals():
-    """Страница со списком сохранённых КП. Поддерживает поиск по названию и тексту (?q=...) и сортировку по дате (?sort=...)."""
+    """Страница со списком сохранённых КП. Поддерживает поиск (?q=...), сортировку (?sort=...) и фильтр по архиву (?show=active|archived|all)."""
     proposals = _load_proposals()
     search_query = request.args.get("q", "").strip()
     sort_order = request.args.get("sort", "newest").strip()
-    
+    show_filter = request.args.get("show", "active").strip()
+    if show_filter not in ("active", "archived", "all"):
+        show_filter = "active"
+
+    # Фильтрация по архиву (archived отсутствует у старых записей — считаем False)
+    if show_filter == "active":
+        proposals = [p for p in proposals if not p.get("archived", False)]
+    elif show_filter == "archived":
+        proposals = [p for p in proposals if p.get("archived", False)]
+
     # Фильтрация по поисковому запросу
     if search_query:
         proposals = _filter_proposals_by_search(proposals, search_query)
-    
+
     # Сортировка по дате
     if sort_order == "oldest":
-        # Сначала старые: сортируем по created_at по возрастанию
         proposals = sorted(proposals, key=lambda p: p.get("created_at", ""))
     else:
-        # Сначала новые (по умолчанию): сортируем по created_at по убыванию
         proposals = sorted(proposals, key=lambda p: p.get("created_at", ""), reverse=True)
-    
-    return render_template("list.html", proposals=proposals, search_query=search_query, sort_order=sort_order)
+
+    return render_template(
+        "list.html",
+        proposals=proposals,
+        search_query=search_query,
+        sort_order=sort_order,
+        show_filter=show_filter,
+    )
 
 
 @app.route("/saved/<proposal_id>")
@@ -346,7 +371,24 @@ def delete_proposal(proposal_id):
     deleted = _delete_proposal(proposal_id)
     if not deleted:
         abort(404)
-    return redirect(url_for("list_proposals"))
+    show_filter = request.form.get("show", "active")
+    return redirect(url_for("list_proposals", show=show_filter))
+
+
+@app.route("/saved/<proposal_id>/archive", methods=["POST"])
+def archive_proposal(proposal_id):
+    """Переводит КП в архив и перенаправляет в список (архив)."""
+    if not _set_proposal_archived(proposal_id, True):
+        abort(404)
+    return redirect(url_for("list_proposals", show="archived"))
+
+
+@app.route("/saved/<proposal_id>/unarchive", methods=["POST"])
+def unarchive_proposal(proposal_id):
+    """Достаёт КП из архива и перенаправляет в список активных."""
+    if not _set_proposal_archived(proposal_id, False):
+        abort(404)
+    return redirect(url_for("list_proposals", show="active"))
 
 
 @app.route("/saved/<proposal_id>/pdf")

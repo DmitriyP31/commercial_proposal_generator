@@ -25,6 +25,11 @@
         .btn:hover { background: var(--accent-hover); }
         .btn-secondary { background: var(--text-muted); }
         .btn-secondary:hover { background: #4a5568; }
+        .btn-group { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; }
+        .btn-outline { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+        .btn-outline:hover { background: rgba(37, 99, 235, 0.1); }
+        form.inline-form { display: inline; }
+        .meta.archived-label { color: var(--text-muted); font-style: italic; }
         .nav-header { margin-bottom: 1.5rem; font-size: 0.95rem; }
         .nav-header a { color: var(--accent); text-decoration: none; font-weight: 500; }
         .nav-header a:hover { text-decoration: underline; }
@@ -40,11 +45,22 @@
             <a href="{{ url_for('index') }}">Генератор КП</a><span>|</span>
             <a href="{{ url_for('list_proposals') }}">Сохранённые КП</a>
         </nav>
-        <p class="back-link"><a href="{{ url_for('list_proposals') }}">← К списку сохранённых</a></p>
+        <p class="back-link"><a href="{{ url_for('list_proposals', show='archived' if proposal.get('archived') else 'active') }}">← К списку сохранённых</a></p>
         <h1>{{ proposal.title }}</h1>
-        <div class="meta">Сохранено: {{ proposal.created_at }}</div>
+        <div class="meta">Сохранено: {{ proposal.created_at }}{% if proposal.get('archived') %} <span class="archived-label">· В архиве</span>{% endif %}</div>
         <div class="card">{{ proposal.text }}</div>
-        <a href="{{ url_for('download_saved_pdf', proposal_id=proposal.id) }}" class="btn btn-secondary">Скачать PDF</a>
+        <div class="btn-group">
+            <a href="{{ url_for('download_saved_pdf', proposal_id=proposal.id) }}" class="btn btn-secondary">Скачать PDF</a>
+            {% if proposal.get('archived') %}
+            <form action="{{ url_for('unarchive_proposal', proposal_id=proposal.id) }}" method="post" class="inline-form">
+                <button type="submit" class="btn btn-outline">Из архива</button>
+            </form>
+            {% else %}
+            <form action="{{ url_for('archive_proposal', proposal_id=proposal.id) }}" method="post" class="inline-form">
+                <button type="submit" class="btn btn-outline">В архив</button>
+            </form>
+            {% endif %}
+        </div>
     </div>
 </body>
 </html>

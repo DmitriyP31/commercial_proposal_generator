@@ -76,6 +76,27 @@
             color: white;
             font-weight: 500;
         }
+        .filter-tabs { margin-bottom: 1rem; }
+        .filter-tabs .sort-links { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+        .filter-tabs .sort-label { font-size: 0.9rem; color: var(--text-muted); font-weight: 500; }
+        .filter-tabs a {
+            color: var(--accent);
+            text-decoration: none;
+            font-size: 0.9rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+        }
+        .filter-tabs a:hover { background-color: rgba(37, 99, 235, 0.1); }
+        .filter-tabs a.active {
+            background-color: var(--accent);
+            color: white;
+            font-weight: 500;
+        }
+        .card.archived { opacity: 0.9; border-left: 3px solid var(--text-muted); }
+        .card-actions form { display: inline; margin-right: 0.5rem; }
+        .archive-button { border: none; background: transparent; color: var(--text-muted); font-size: 0.85rem; cursor: pointer; padding: 0; }
+        .archive-button:hover { text-decoration: underline; color: var(--accent); }
     </style>
 </head>
 <body>
@@ -85,35 +106,57 @@
             <a href="{{ url_for('list_proposals') }}">Сохранённые КП</a>
         </nav>
         <h1>Сохранённые КП</h1>
+        <div class="filter-tabs">
+            <div class="sort-links">
+                <span class="sort-label">Показать:</span>
+                <a href="{{ url_for('list_proposals', q=search_query, sort=sort_order, show='active') }}"
+                   class="{% if show_filter == 'active' %}active{% endif %}">Активные</a>
+                <a href="{{ url_for('list_proposals', q=search_query, sort=sort_order, show='archived') }}"
+                   class="{% if show_filter == 'archived' %}active{% endif %}">В архиве</a>
+                <a href="{{ url_for('list_proposals', q=search_query, sort=sort_order, show='all') }}"
+                   class="{% if show_filter == 'all' %}active{% endif %}">Все</a>
+            </div>
+        </div>
         <div class="search-form">
             <form action="{{ url_for('list_proposals') }}" method="get" role="search">
                 <input type="search" name="q" value="{{ search_query or '' }}" placeholder="Поиск по названию и тексту КП" aria-label="Поиск по сохранённым КП">
+                <input type="hidden" name="show" value="{{ show_filter }}">
                 {% if sort_order and sort_order != 'newest' %}
                 <input type="hidden" name="sort" value="{{ sort_order }}">
                 {% endif %}
                 <button type="submit">Искать</button>
             </form>
             {% if search_query %}
-            <p class="search-hint">Найдено: {{ proposals|length }}. <a href="{{ url_for('list_proposals') }}">Показать все</a></p>
+            <p class="search-hint">Найдено: {{ proposals|length }}. <a href="{{ url_for('list_proposals', show=show_filter) }}">Показать все</a></p>
             {% endif %}
         </div>
         
         <div class="sort-controls">
             <div class="sort-links">
                 <span class="sort-label">Сортировка:</span>
-                <a href="{{ url_for('list_proposals', q=search_query, sort='newest') }}" 
+                <a href="{{ url_for('list_proposals', q=search_query, sort='newest', show=show_filter) }}"
                    class="{% if not sort_order or sort_order == 'newest' %}active{% endif %}">Сначала новые</a>
-                <a href="{{ url_for('list_proposals', q=search_query, sort='oldest') }}" 
+                <a href="{{ url_for('list_proposals', q=search_query, sort='oldest', show=show_filter) }}"
                    class="{% if sort_order == 'oldest' %}active{% endif %}">Сначала старые</a>
             </div>
         </div>
         {% if proposals %}
             {% for p in proposals %}
-            <div class="card">
+            <div class="card{% if p.get('archived') %} archived{% endif %}">
                 <a href="{{ url_for('view_proposal', proposal_id=p.id) }}">{{ p.title }}</a>
-                <div class="meta">Сохранено: {{ p.created_at }}</div>
+                <div class="meta">Сохранено: {{ p.created_at }}{% if p.get('archived') %} · В архиве{% endif %}</div>
                 <div class="card-actions">
+                    {% if p.get('archived') %}
+                    <form action="{{ url_for('unarchive_proposal', proposal_id=p.id) }}" method="post">
+                        <button type="submit" class="archive-button">Из архива</button>
+                    </form>
+                    {% else %}
+                    <form action="{{ url_for('archive_proposal', proposal_id=p.id) }}" method="post">
+                        <button type="submit" class="archive-button">В архив</button>
+                    </form>
+                    {% endif %}
                     <form action="{{ url_for('delete_proposal', proposal_id=p.id) }}" method="post">
+                        <input type="hidden" name="show" value="{{ show_filter }}">
                         <button type="submit" class="delete-button">Удалить</button>
                     </form>
                 </div>
@@ -121,9 +164,9 @@
             {% endfor %}
         {% else %}
             {% if search_query %}
-            <p class="empty">По запросу «{{ search_query }}» ничего не найдено. <a href="{{ url_for('list_proposals') }}">Показать все КП</a></p>
+            <p class="empty">По запросу «{{ search_query }}» ничего не найдено. <a href="{{ url_for('list_proposals', show=show_filter) }}">Показать все КП</a></p>
             {% else %}
-            <p class="empty">Пока нет сохранённых. Создайте КП на главной и нажмите «Сохранить в список».</p>
+            <p class="empty">{% if show_filter == 'archived' %}В архиве пусто.{% elif show_filter == 'all' %}Нет сохранённых КП.{% else %}Пока нет сохранённых. Создайте КП на главной и нажмите «Сохранить в список».{% endif %}</p>
             {% endif %}
         {% endif %}
     </div>
