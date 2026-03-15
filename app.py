@@ -311,12 +311,24 @@ def _filter_proposals_by_search(proposals, query):
 
 @app.route("/saved/")
 def list_proposals():
-    """Страница со списком сохранённых КП (новые сверху). Поддерживает поиск по названию и тексту (?q=...)."""
-    proposals = list(reversed(_load_proposals()))
+    """Страница со списком сохранённых КП. Поддерживает поиск по названию и тексту (?q=...) и сортировку по дате (?sort=...)."""
+    proposals = _load_proposals()
     search_query = request.args.get("q", "").strip()
+    sort_order = request.args.get("sort", "newest").strip()
+    
+    # Фильтрация по поисковому запросу
     if search_query:
         proposals = _filter_proposals_by_search(proposals, search_query)
-    return render_template("list.html", proposals=proposals, search_query=search_query)
+    
+    # Сортировка по дате
+    if sort_order == "oldest":
+        # Сначала старые: сортируем по created_at по возрастанию
+        proposals = sorted(proposals, key=lambda p: p.get("created_at", ""))
+    else:
+        # Сначала новые (по умолчанию): сортируем по created_at по убыванию
+        proposals = sorted(proposals, key=lambda p: p.get("created_at", ""), reverse=True)
+    
+    return render_template("list.html", proposals=proposals, search_query=search_query, sort_order=sort_order)
 
 
 @app.route("/saved/<proposal_id>")

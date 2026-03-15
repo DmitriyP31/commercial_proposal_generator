@@ -59,6 +59,23 @@
         }
         .search-form button:hover { background: var(--accent-hover); }
         .search-hint { font-size: 0.85rem; color: var(--text-muted); margin-top: 0.5rem; }
+        .sort-controls { margin-bottom: 1rem; }
+        .sort-controls .sort-links { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+        .sort-controls .sort-label { font-size: 0.9rem; color: var(--text-muted); font-weight: 500; }
+        .sort-controls a {
+            color: var(--accent);
+            text-decoration: none;
+            font-size: 0.9rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+        }
+        .sort-controls a:hover { background-color: rgba(37, 99, 235, 0.1); }
+        .sort-controls a.active {
+            background-color: var(--accent);
+            color: white;
+            font-weight: 500;
+        }
     </style>
 </head>
 <body>
@@ -71,11 +88,24 @@
         <div class="search-form">
             <form action="{{ url_for('list_proposals') }}" method="get" role="search">
                 <input type="search" name="q" value="{{ search_query or '' }}" placeholder="Поиск по названию и тексту КП" aria-label="Поиск по сохранённым КП">
+                {% if sort_order and sort_order != 'newest' %}
+                <input type="hidden" name="sort" value="{{ sort_order }}">
+                {% endif %}
                 <button type="submit">Искать</button>
             </form>
             {% if search_query %}
             <p class="search-hint">Найдено: {{ proposals|length }}. <a href="{{ url_for('list_proposals') }}">Показать все</a></p>
             {% endif %}
+        </div>
+        
+        <div class="sort-controls">
+            <div class="sort-links">
+                <span class="sort-label">Сортировка:</span>
+                <a href="{{ url_for('list_proposals', q=search_query, sort='newest') }}" 
+                   class="{% if not sort_order or sort_order == 'newest' %}active{% endif %}">Сначала новые</a>
+                <a href="{{ url_for('list_proposals', q=search_query, sort='oldest') }}" 
+                   class="{% if sort_order == 'oldest' %}active{% endif %}">Сначала старые</a>
+            </div>
         </div>
         {% if proposals %}
             {% for p in proposals %}
